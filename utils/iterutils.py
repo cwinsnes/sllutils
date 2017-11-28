@@ -14,9 +14,9 @@ def grouper(iterable, n):
     Returns:
         A generator which will yield the entire iterable in chunks of size n.
 
-    .. _Copied from
-        https://stackoverflow.com/questions/8991506/iterate-an-iterator-by-chunks-of-n-in-python
-        Thanks to Sven Marnach
+    Notes:
+    Copied from https://stackoverflow.com/questions/8991506/iterate-an-iterator-by-chunks-of-n-in-python
+    Thanks to Sven Marnach for the code snippet.
     """
     it = iter(iterable)
     while True:

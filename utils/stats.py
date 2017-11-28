@@ -14,7 +14,7 @@ def jaccard_index(y_true, y_predict):
     The Jaccard index  is calculated as
     |intersection(T,S)|/|union(T,S)|
 
-    Parameters:
+    Args:
         y_true:   A list of binary vectors.
                   The list should consist of the target vectors.
 

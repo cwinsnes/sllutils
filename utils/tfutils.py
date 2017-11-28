@@ -7,9 +7,17 @@ import tensorflow as tf
 def binary_cross_entropy(prediction, target):
     """
     Calculates the binary cross entropy value according to the below formula.
+    The input vectors must be of the same length.
 
     let o=prediction, t=target
     -(t*log(o) + (1-t)*log(1-o))
+
+    Args:
+        prediction: The prediction vector. Values should be between 0 and 1.
+        target: The target vector. This should be a binary vector using 0s and 1s.
+
+    Returns:
+        The binary cross entropy of the parameters, as defined by the above formula.
 
     Notes:
         Adds a small (1e-12) value to the logarithms to avoid log(0).

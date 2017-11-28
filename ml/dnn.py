@@ -7,7 +7,7 @@ import tempfile
 import numpy as np
 import tensorflow as tf
 import utils.iterutils as iterutils
-import utils.datautils as datautils
+import utils.stats as stats
 import utils.tfutils as tfutils
 
 
@@ -19,11 +19,13 @@ class DNN(object):
         """
         Creates a DNN object.
         If no arguments are supplied, an empty network graph is created.
+
         Args:
-            model_file: The path to a model saved previously by a call to save.
-                        It is important that the meta file exists as
-                        `model_file`.meta.
+            model_file: The path to a model saved previously by a call to save. It is important that the meta file
+                        exists as `model_file`.meta.
+                        This argument should only be used when seed is None.
             seed: Sets the random seed of the tensorflow system.
+                  This argument should only be used when model_file is None.
         """
         if seed and model_file:
             raise ValueError('Cannot give both a model_file and a seed')
@@ -40,18 +42,16 @@ class DNN(object):
                     tf.set_random_seed(seed)
                     tf.add_to_collection('seed', seed)
 
-            self.dropouts = []
-            self._drop_probs = []
-            self._ops = []
-            self._shapes = []
-            self._activations = []
+            self._previous_layer = None
+
+            self._neurons = []
+            self._dropouts = []
 
             self.built = False
 
     def _init_weight(self, shape, mean=0.0, stddev=0.1):
         """
-        Creates a tf Variable initialized with random variable in a normal
-        distribution.
+        Creates a tf Variable initialized with random variable in a normal distribution.
 
         Args:
             shape:  The shape of the Variable.
@@ -64,37 +64,59 @@ class DNN(object):
             distribution = tf.random_normal(shape, mean=mean, stddev=stddev)
             return tf.Variable(distribution, name='variables')
 
-    def _init_bias(self, shape):
+    def _init_bias(self, shape, value=0.1):
         """
-        Creates a tf Variable initialized to be good for use as a bias
-        variable.
+        Creates a tf Variable initialized to be good for use as a bias variable.
 
         Args:
             shape: The shape of the bias variable
+            value: The value for the bias variable.
         Returns:
             An initialized bias variable.
         """
-        initial = tf.random_normal(shape=shape)
+        initial = tf.constant(value, shape=shape)
         return tf.Variable(initial)
 
-    def add_layer(self, shape, activation=tf.identity, dropout=0.0):
+    def add_fc_layer(self, neurons, activation=tf.identity, dropout=None, bias=None):
         """
-        Adds a layer to the neural network with a specified number of output
-        neurons.
+        Adds a fully connected layer to the neural network with a specified number of neurons.
         For the first layer, num_in must be specified, it is otherwise optional
+
         Args:
-            shape:  A list containing 2 values [n_in, n_out].
+            neurons:  The number of neurons this layer should contain.
             activation: The activation function used by the layer.
-            dropout:    The amount of dropout to be applied to the layer,
-                        specified as a value in the range [0,1].
+            dropout:    The amount of dropout to be applied to the layer, specified as a value in the range [0,1].
+                        If None, use no dropout.
+            bias: A floating point number indicating what bias should be added to this layer. If None, use no bias.
         """
 
         if self.built:
             raise ValueError('Network is already built')
 
-        self._shapes.append(list(shape))
-        self._activations.append(activation)
-        self._drop_probs.append(dropout)
+        with self._graph.as_default():
+            if self._previous_layer is None:
+                self._X = tf.placeholder(tf.float32, [None, neurons])
+                layer = self._X
+            else:
+                layer = self._init_weight((self._neurons[-1], neurons))
+                layer = tf.matmul(self._previous_layer, layer)
+
+            if bias is not None:
+                layer = tf.add(layer, self._init_bias((neurons,), bias))
+            layer = activation(layer)
+
+            if dropout is not None:
+                drop = tf.placeholder(tf.float32)
+                layer = tf.nn.dropout(layer, 1.-drop)
+                tf.add_to_collection('dropout-{}'.format(len(self._dropouts)), drop)
+                tf.add_to_collection('dropout-prob-{}'.format(len(self._dropouts)), dropout)
+                self._dropouts.append((drop, dropout))
+
+        self._previous_layer = layer
+        self._neurons.append(neurons)
+
+    def add_conv2d_layer(self, kernel_size, strides, padding, activation=tf.identity):
+        pass
 
     def cost(self, data, batch_size=500):
         """
@@ -131,60 +153,28 @@ class DNN(object):
               optimizer=tf.train.AdamOptimizer()):
         """
         Builds the neural network so that training and predicting can be made.
-        Args:
-            cost: The cost function the be used for determining the loss value
-                  of the network.
-                  Needs to be a function that takes two vectors as input and
-                  returns a value.
+        The network must be at least two layers deep to be buildable.
 
+        Args:
+            cost: The cost function the be used for determining the loss value of the network.
+                  Needs to be a function that takes two vectors as input and returns a value.
             optimizer: The optimizer to run over the network.
-                       This needs to be an object that has a minimize function
-                       which takes a tensorflow operation and updates the
-                       network based on it.
+                       This needs to be an object that has a minimize function which takes a tensorflow
+                       operation and updates the network based on it.
         """
         if self.built:
             raise ValueError('Network is already built')
 
         with self._graph.as_default():
-            self._X = tf.placeholder(tf.float32, [None, self._shapes[0][0]])
-            self._Y = tf.placeholder(tf.float32, [None, self._shapes[-1][1]])
-
-            self._shapes[1][0] = self._shapes[0][0]
+            self._Y = tf.placeholder(tf.float32, [None, self._neurons[-1]])
 
             # For saving and restoring model later
             tf.add_to_collection('X', self._X)
             tf.add_to_collection('Y', self._Y)
 
-            # Special case for input layer
-            h = self._activations[0](self._X)
-            drop_x = tf.placeholder(tf.float32)
-            drop_op = tf.nn.dropout(h, 1.-drop_x)
-            tf.add_to_collection('drop0', drop_x)
-            tf.add_to_collection('drop_val0', self._drop_probs[0])
-            self.dropouts.append(drop_x)
-
-            prev = drop_op
-            hidden_layers = zip(self._shapes[1:], self._activations[1:])
-            for i, layer in enumerate(hidden_layers, start=1):
-                (shape, activation) = layer
-                w_h = self._init_weight(shape)
-                w_b = self._init_bias([shape[1]])
-
-                h = activation(tf.matmul(prev, w_h) + w_b)
-                drop = tf.placeholder(tf.float32)
-                op_h = tf.nn.dropout(h, 1.-drop)
-                self.dropouts.append(drop)
-                self._ops.append(op_h)
-
-                # For saving and restoring model later
-                tf.add_to_collection('drop%d' % i, drop)
-                tf.add_to_collection('drop_val%d' % i, self._drop_probs[i])
-
-                prev = op_h
-
-            self.cost_op = tf.reduce_mean(cost(prev, self._Y))
+            self.cost_op = tf.reduce_mean(cost(self._previous_layer, self._Y))
             self.train_op = optimizer.minimize(self.cost_op)
-            self.predict_op = prev
+            self.predict_op = self._previous_layer
 
             # For saving and restoring model later
             tf.add_to_collection('cost', self.cost_op)
@@ -239,9 +229,8 @@ class DNN(object):
         tmp_storage_file = tempfile.NamedTemporaryFile()
         with self._graph.as_default():
             feed_dict = {}
-            dropouts = zip(self.dropouts, self._drop_probs)
-            for (dropout, p_drop) in dropouts:
-                feed_dict[dropout] = p_drop
+            for dropout, p in self._dropouts:
+                feed_dict[dropout] = p
 
             previous_val_cost = 999999999
             non_decreasing_epochs = 0
@@ -260,7 +249,7 @@ class DNN(object):
                     predictions = np.asarray(self.predict(train_data))
                     predictions[predictions > 0.4] = 1
                     predictions[predictions < 1.0] = 0
-                    acc = datautils.hamming_score(train_keys, predictions)
+                    acc = stats.hamming_score(train_keys, predictions)
                     formatstring = '{} cost: {:.6f}  acc(cutoff 0.4): {:.6f}'
                     istr = str(i).zfill(len(str(epochs)))
                     print(formatstring.format(istr, cost, acc))
@@ -277,7 +266,7 @@ class DNN(object):
                     predictions = np.asarray(self.predict(validation_data[0]))
                     predictions[predictions > 0.4] = 1
                     predictions[predictions < 1.0] = 0
-                    acc = datautils.hamming_score(validation_data[1], predictions)
+                    acc = stats.hamming_score(validation_data[1], predictions)
                     if verbose:
                         print(validation_string.format(acc, val_cost), end=' ')
                         if early_stopping:
@@ -309,7 +298,7 @@ class DNN(object):
             raise ValueError('Network not built yet')
         with self._graph.as_default():
             feed_dict = {}
-            for dropout in self.dropouts:
+            for dropout, _ in self._dropouts:
                 feed_dict[dropout] = 0.
 
             predictions = []
@@ -341,8 +330,7 @@ class DNN(object):
         self._config = tf.ConfigProto(allow_soft_placement=True)
         self._graph = tf.Graph()
         self._sess = tf.Session(config=self._config, graph=self._graph)
-        self.dropouts = []
-        self._drop_probs = []
+        self._dropouts = []
         with self._graph.as_default():
             saver = tf.train.import_meta_graph(model_file + '.meta')
             saver.restore(self._sess, model_file)
@@ -356,11 +344,10 @@ class DNN(object):
             self.cost_op = tf.get_collection('cost')[0]
             self.train_op = tf.get_collection('train')[0]
             for i in itertools.count():
-                dropout = tf.get_collection('drop%d' % i)
-                val = tf.get_collection('drop_val%d' % i)
-                if len(val):
-                    self.dropouts.append(dropout[0])
-                    self._drop_probs.append(val[0])
+                dropout = tf.get_collection('dropout-%d' % i)
+                dropout_prob = tf.get_collection('dropout-prob-%d' % i)
+                if len(dropout):
+                    self._dropouts.append((dropout[0], dropout_prob[0]))
                 else:
                     break
         self.built = True
