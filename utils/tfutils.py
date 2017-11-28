@@ -1,0 +1,71 @@
+"""
+Module for util functions that are compaitible with Tensorflow.
+"""
+import tensorflow as tf
+
+
+def binary_cross_entropy(prediction, target):
+    """
+    Calculates the binary cross entropy value according to the below formula.
+
+    let o=prediction, t=target
+    -(t*log(o) + (1-t)*log(1-o))
+
+    Notes:
+        Adds a small (1e-12) value to the logarithms to avoid log(0).
+        As it is a loss function, values closer to 0 is better.
+    """
+    e = 1e-12
+    op1 = tf.multiply(target, tf.log(prediction + e))
+    op2 = tf.multiply(tf.subtract(1., target),
+                      tf.log(tf.subtract(1., prediction) + e))
+    return tf.negative(tf.add(op1, op2))
+
+
+def weighted_auxillary_cross_entropy(prediction, target, C=0.3):
+    """
+    Cross entropy version which includes another input as in the loss
+    calculation.
+
+    target should be a binary array containing two parts.
+    The first half of the array should represent the true values, the "gold
+    standard".
+    The second half should represent the auxillary data.
+    The array *has* to be evenly split by two.
+
+    prediction should be a prediction array, at least as long as half the size
+    of the target array.
+
+    C can either be a floating point number or an array of floating point
+    numbers. If it is an array, it has to be of equal length to half the size
+    of the target array.
+
+    The formula for calculation is roughly equivalent to:
+        let t1 = target[0 : len(target)/2]
+        let t2 = target[len(target)/2 : end(target)]
+        let o = prediction[0 : len(target)/2]
+        let BCE = binary_cross_entropy function
+        loss = BCE(t1, o) + C * BCE(t2, o)
+
+
+    Note:
+        This cost function did not work out too well when we tried it out. Use
+        at your own risk.
+    """
+    C = tf.constant(C, dtype=tf.float32)
+    tensor_length = int(target.get_shape()[1])
+    if tensor_length % 2:
+        raise ValueError('Length of Tensor must be an even number')
+
+    class_length = int(tensor_length/2)
+
+    t1 = target[:, :class_length]
+    t2 = target[:, class_length:]
+    o = prediction[:, :class_length]
+
+    bce1 = binary_cross_entropy(o, t1)
+    bce2 = binary_cross_entropy(o, t2)
+
+    gamer_influence = tf.multiply(C, bce2)
+
+    return tf.add(bce1, gamer_influence)
