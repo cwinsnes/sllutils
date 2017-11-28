@@ -219,8 +219,6 @@ class DNN(object):
                             Does not have an effect if there is no validation
                             set.
         """
-        validation_string = ('\t  Validation acc(cutoff 0.4): {:.6f}\n'
-                             '\t  Validation cost: {:.6f}')
         if not self.built:
             raise ValueError('Network not built yet')
 
@@ -232,7 +230,7 @@ class DNN(object):
             for dropout, p in self._dropouts:
                 feed_dict[dropout] = p
 
-            previous_val_cost = 999999999
+            previous_validation_cost = 999999999
             non_decreasing_epochs = 0
             for i in range(epochs):
 
@@ -245,41 +243,28 @@ class DNN(object):
                     self._sess.run(self.train_op, feed_dict=feed_dict)
 
                 if verbose:
+                    formatstring = '{} cost: {:.6f}'
                     cost = self.cost(train, batch_size)
-                    predictions = np.asarray(self.predict(train_data))
-                    predictions[predictions > 0.4] = 1
-                    predictions[predictions < 1.0] = 0
-                    acc = stats.hamming_score(train_keys, predictions)
-                    formatstring = '{} cost: {:.6f}  acc(cutoff 0.4): {:.6f}'
                     istr = str(i).zfill(len(str(epochs)))
-                    print(formatstring.format(istr, cost, acc))
+                    print(formatstring.format(istr, cost))
 
                 if validation_data:
-                    val_cost = self.cost(validation_data, batch_size)
-                    if val_cost < previous_val_cost:
-                        previous_val_cost = val_cost
+                    validation_cost = self.cost(validation_data, batch_size)
+                    if validation_cost < previous_validation_cost:
+                        previous_validation_cost = validation_cost
                         non_decreasing_epochs = 0
                         if early_stopping:
                             self.save(tmp_storage_file.name)
                     else:
                         non_decreasing_epochs += 1
-                    predictions = np.asarray(self.predict(validation_data[0]))
-                    predictions[predictions > 0.4] = 1
-                    predictions[predictions < 1.0] = 0
-                    acc = stats.hamming_score(validation_data[1], predictions)
                     if verbose:
-                        print(validation_string.format(acc, val_cost), end=' ')
+                        validationstring = 'Validation cost: {:.6f} ({} patience)'
                         if early_stopping:
-                            epoch_left = early_stopping - non_decreasing_epochs
-                            print('(Patience:', epoch_left, ')')
+                            print(validationstring.format(validation_cost, early_stopping-non_decreasing_epochs))
                         else:
-                            print()
+                            print(validationstring.format(validation_cost, 'inf'))
 
-                    if not early_stopping:
-                        continue
-                    # Break out of training if we don't get improved
-                    # performance on validation set
-                    if (non_decreasing_epochs >= early_stopping):
+                    if early_stopping and (non_decreasing_epochs >= early_stopping):
                         self.load(tmp_storage_file.name)
                         break
         return cost
