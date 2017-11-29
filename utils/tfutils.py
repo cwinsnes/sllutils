@@ -4,6 +4,10 @@ Module for util functions that are compaitible with Tensorflow.
 import tensorflow as tf
 
 
+def squared_error(prediction, target):
+    return tf.square(prediction - target)
+
+
 def binary_cross_entropy(prediction, target):
     """
     Calculates the binary cross entropy value according to the below formula.
@@ -25,8 +29,7 @@ def binary_cross_entropy(prediction, target):
     """
     e = 1e-12
     op1 = tf.multiply(target, tf.log(prediction + e))
-    op2 = tf.multiply(tf.subtract(1., target),
-                      tf.log(tf.subtract(1., prediction) + e))
+    op2 = tf.multiply(tf.subtract(1., target), tf.log(tf.subtract(1., prediction) + e))
     return tf.negative(tf.add(op1, op2))
 
 
