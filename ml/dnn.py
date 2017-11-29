@@ -15,8 +15,11 @@ class DNN(object):
         self._previous_layer = None
         self._X = None
         self._counter = collections.Counter()
-        self._session = tf.Session()
         self._dropouts = []
+
+        self._graph = tf.Graph()
+        config = tf.ConfigProto(allow_soft_placement=True)
+        self._session = tf.Session(config=config, graph=self._graph)
 
     def set_input(self, shape):
         """
@@ -30,45 +33,52 @@ class DNN(object):
         if self._X is not None:
             raise ValueError('Setting the input layer more than once is impossible')
 
-        with tf.name_scope('input'):
-            self._X = tf.placeholder(tf.float32, shape=shape)
-            self._previous_layer = self._X
+        with self._graph.as_default():
+            with tf.name_scope('input'):
+                self._X = tf.placeholder(tf.float32, shape=shape)
+                self._previous_layer = self._X
 
     def add_reshape(self, new_shape):
         if self._previous_layer is None:
             raise ValueError('An input layer must be set first')
 
-        with tf.name_scope('reshape' + str(self._counter['reshape'])):
-            self._previous_layer = tf.reshape(self._previous_layer, new_shape)
+        with self._graph.as_default():
+            with tf.name_scope('reshape' + str(self._counter['reshape'])):
+                self._previous_layer = tf.reshape(self._previous_layer, new_shape)
 
     def add_conv2d(self, kernel_size, filters, padding='same', activation=tf.nn.relu):
-        self._previous_layer = tf.layers.conv2d(inputs=self._previous_layer,
-                                                filters=filters,
-                                                kernel_size=kernel_size,
-                                                padding=padding,
-                                                activation=activation)
+        with self._graph.as_default():
+            self._previous_layer = tf.layers.conv2d(inputs=self._previous_layer,
+                                                    filters=filters,
+                                                    kernel_size=kernel_size,
+                                                    padding=padding,
+                                                    activation=activation)
 
     def add_max_pool2d(self, pool_size, strides):
-        self._previous_layer = tf.layers.max_pooling2d(inputs=self._previous_layer,
-                                                       pool_size=pool_size,
-                                                       strides=strides)
+        with self._graph.as_default():
+            self._previous_layer = tf.layers.max_pooling2d(inputs=self._previous_layer,
+                                                        pool_size=pool_size,
+                                                        strides=strides)
 
     def add_dense(self, units, activation=tf.nn.relu):
-        self._previous_layer = tf.layers.dense(inputs=self._previous_layer,
-                                               units=units,
-                                               activation=activation)
+        with self._graph.as_default():
+            self._previous_layer = tf.layers.dense(inputs=self._previous_layer,
+                                                units=units,
+                                                activation=activation)
 
     def add_dropout(self, drop_probability):
-        prob = tf.placeholder(tf.float32)
-        self._previous_layer = tf.layers.dropout(self._previous_layer, rate=prob, training=True)
-        self._dropouts.append((prob, drop_probability))
+        with self._graph.as_default():
+            prob = tf.placeholder(tf.float32)
+            self._previous_layer = tf.layers.dropout(self._previous_layer, rate=prob, training=True)
+            self._dropouts.append((prob, drop_probability))
 
     def build(self, cost_function=tfutils.binary_cross_entropy, optimizer=tf.train.AdamOptimizer()):
-        self._Y = tf.placeholder(tf.float32, [None, *self._previous_layer.get_shape().as_list()[1:]])
-        self._predict_op = self._previous_layer
-        self._cost_op = tf.reduce_mean(cost_function(self._predict_op, self._Y))
-        self._train_op = optimizer.minimize(self._cost_op)
-        self._session.run(tf.global_variables_initializer())
+        with self._graph.as_default():
+            self._Y = tf.placeholder(tf.float32, [None, *self._previous_layer.get_shape().as_list()[1:]])
+            self._predict_op = self._previous_layer
+            self._cost_op = tf.reduce_mean(cost_function(self._predict_op, self._Y))
+            self._train_op = optimizer.minimize(self._cost_op)
+            self._session.run(tf.global_variables_initializer())
 
     def train(self, train_x, train_y):
         feed_dict = {self._X: train_x,
