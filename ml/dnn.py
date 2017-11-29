@@ -2,10 +2,7 @@
 Module for creating and working with Deep Neural Networks.
 No warranty!
 """
-import itertools
-import tempfile
 import tensorflow as tf
-import utils.iterutils as iterutils
 import utils.tfutils as tfutils
 import collections
 
