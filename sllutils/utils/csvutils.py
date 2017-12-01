@@ -46,9 +46,7 @@ def filter(csvfile, include={}, exclude={}, fieldnames=None, delimiter=',', quot
     csvreader = csv.DictReader(csvfile, fieldnames=fieldnames, delimiter=delimiter, quotechar=quotechar)
     filtered_csv = []
 
-    include_headers = False
-    if fieldnames is None:
-        include_headers = True
+    include_headers = not fieldnames
     fieldnames = csvreader.fieldnames
 
     if include_headers:
