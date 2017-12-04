@@ -38,7 +38,5 @@ def jaccard_index(y_true, y_predict):
         denominator += len(union)
     return numerator/denominator
 
-
-def hamming_score(y_true, y_predict):
-    """Alternative name to the jaccard index function"""
-    return jaccard_index(y_true, y_predict)
+# Alternative name to the jaccard index function
+hamming_score = jaccard_index
