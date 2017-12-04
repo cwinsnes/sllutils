@@ -5,6 +5,17 @@ import tensorflow as tf
 
 
 def squared_error(prediction, target):
+    """
+    Calculates the squared error of the prediction against the target.
+
+    (prediction - target)^2
+
+    Args:
+        prediction: The prediction vector.
+        target: The target vector.
+    Returns:
+        The squared error of the prediction on the target, as per the above formula.
+    """
     return tf.square(prediction - target)
 
 
