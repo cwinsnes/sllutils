@@ -2,6 +2,8 @@
 Module for analyzing data and numbers.
 """
 import numpy as np
+import collections
+import math
 
 
 def jaccard_index(y_true, y_predict):
@@ -37,6 +39,26 @@ def jaccard_index(y_true, y_predict):
         numerator += len(intersection)
         denominator += len(union)
     return numerator/denominator
+
+
+def shannon_entropy(sequence, log_base=2):
+    """
+    Calculates the shannon entropy over a sequence of values.
+
+    Args:
+        sequence: An iterable of values.
+        log_base: What base to use for the logarithm.
+                  Common values are: 2 (bits), e (nats), and 10 (bans).
+    Returns:
+        The shannon entropy over the sequence.
+    """
+    counter = collections.Counter(sequence)
+    n = sum(counter.values())
+
+    sequence_sum = 0
+    for _, count in counter.items():
+        sequence_sum += (count/n) * math.log(count/n, log_base)
+    return -sequence_sum
 
 # Alternative name to the jaccard index function
 hamming_score = jaccard_index
