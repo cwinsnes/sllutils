@@ -1,7 +1,37 @@
 """
 Module for util functions that are compaitible with Tensorflow.
 """
+import os
 import tensorflow as tf
+from tensorflow.python.client import device_lib
+
+
+def get_num_gpus():
+    """
+    Returns the number of available GPUs on this system.
+
+    Note: Due to how tensorflow works, this function will do the following:
+        1. Disable all but FATAL Tensorflow logging
+        2. Allocate a small amount of memory on each GPU
+        3. Count number of GPUs
+        4. Release GPU memory
+        5. Reset Tensorflow logging to previous level
+        6. Return num gpus
+    Running this function if any of these steps are unavailable will cause a crash.
+    """
+    if 'TF_CPP_MIN_LOG_LEVEL' in os.environ:
+        logging_level = os.environ['TF_CPP_MIN_LOG_LEVEL']
+    else:
+        logging_level = '0'
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+    config = tf.ConfigProto()
+    config.gpu_options.per_process_gpu_memory_fraction = 0.000001
+    with tf.Session(config=config):
+        gpu_devices = [device for device in device_lib.list_local_devices() if device.device_type == 'GPU']
+
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = logging_level
+    return len(gpu_devices)
 
 
 def squared_error(prediction, target):
