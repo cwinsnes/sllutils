@@ -3,8 +3,6 @@ Module for creating and working with Deep Neural Networks.
 No warranty!
 """
 import tensorflow as tf
-import zipfile
-import tempfile
 import sllutils.utils.tfutils as tfutils
 import sllutils.utils.contextutils as contextutils
 import sys
