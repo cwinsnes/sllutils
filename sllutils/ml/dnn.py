@@ -3,6 +3,8 @@ Module for creating and working with Deep Neural Networks.
 No warranty!
 """
 import tensorflow as tf
+import zipfile
+import tempfile
 import sllutils.utils.tfutils as tfutils
 import sllutils.utils.contextutils as contextutils
 import sys
@@ -39,8 +41,8 @@ class DNN(object):
         else:
             raise ValueError('No input shape is specified')
 
-        with tf.device('/cpu:0'):
-            self.model.add(layer(*args, **kwargs))
+        # with tf.device('/cpu:0'):
+        self.model.add(layer(*args, **kwargs))
 
     def set_input_shape(self, shape):
         """
@@ -101,6 +103,7 @@ class DNN(object):
             num_gpus: The number of gpus to use for this model.
                       If None, use the maximum number of available GPUs.
         """
+        self._base_model = self.model
         if num_gpus is None:
             num_gpus = tfutils.get_num_gpus()
         if num_gpus >= 2:
@@ -108,19 +111,37 @@ class DNN(object):
         self.model.compile(optimizer=optimizer, loss=loss)
         self._built = True
 
-    def train(self, x, y, batch_size=None, epochs=1, validationx=None, validationy=None):
+    def train(self, x, y, batch_size=None, epochs=1, validationx=None, validationy=None, verbose=False):
         for epoch in range(epochs):
-            self.model.fit(x, y, batch_size, verbose=0)
+            hist = self.model.fit(x, y, batch_size, verbose=0)
+            if verbose:
+                print('{}: {}'.format(epoch, hist.history['loss'][-1]))
 
     def predict(self, x, batch_size=None):
         return self.model.predict(x, batch_size)
 
     def save(self, path):
-        pass
+        os.makedirs(path)
+
+        modelpath = os.path.join(path, 'model.json')
+        weightpath = os.path.join(path, 'weights.h5')
+
+        model_json = self._base_model.to_json()
+        open(modelpath, 'w').write(model_json)
+        self._base_model.save_weights(weightpath)
 
     def load_model(self, path):
-        pass
+        modelpath = os.path.join(path, 'model.json')
+        weightpath = os.path.join(path, 'weights.h5')
+
+        model_json = open(modelpath, 'r').read()
+        model = keras.models.model_from_json(model_json)
+
+        model.load_weights(weightpath)
+        self.model = model
+        self._built = True
 
     @classmethod
-    def load(self, path):
-        pass
+    def load(cls, path):
+        with contextutils.redirect(sys.stderr, os.devnull):
+            instance = cls()
