@@ -18,12 +18,22 @@ class DNN(object):
     """
     Implements (Deep) Neural Networks using Keras and Tensorflow.
     """
-    def __init__(self, data_format='channels_first'):
+    def __init__(self, data_format='channels_first', model_on_cpu=True):
         """
         Args:
             data_format: Either 'channels_first' and 'channels_last' depending on what data format convention is to
                          be used for this model.
                          Default is channels_first (eg, [3, x, y] for an RGB image of size (x,y)).
+            model_on_cpu: A boolean indicating whether the model should be created on the CPU or if the backend
+                          should decide where to put it.
+
+                          For single-GPU training this must be `False` as the model will not utilize the GPU at all.
+
+                          For multi-GPU training, `model_on_cpu=True` is recommended as the variable synchronization
+                          might end up on a GPU otherwise.
+
+                          For CPU-training, it should not matter at all as the model should be placed on the CPU
+                          anyways.
         """
         keras.backend.set_image_data_format(data_format)
 
@@ -32,6 +42,7 @@ class DNN(object):
         self._data_format = data_format
         self._built = False
         self._first_layer = True
+        self._model_on_cpu = model_on_cpu
 
     def _add_layer(self, layer, *args, **kwargs):
         if self._built:
@@ -41,8 +52,11 @@ class DNN(object):
         else:
             raise ValueError('No input shape is specified')
 
-        # with tf.device('/cpu:0'):
-        self.model.add(layer(*args, **kwargs))
+        if self._model_on_cpu:
+            with tf.device('/cpu:0'):
+                self.model.add(layer(*args, **kwargs))
+        else:
+            self.model.add(layer(*args, **kwargs))
 
     def set_input_shape(self, shape):
         """
@@ -145,3 +159,5 @@ class DNN(object):
     def load(cls, path):
         with contextutils.redirect(sys.stderr, os.devnull):
             instance = cls()
+            instance.load_model(path)
+        return instance
