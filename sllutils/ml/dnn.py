@@ -100,6 +100,9 @@ class DNN(object):
         self._add_layer(keras.layers.Conv2D, filters, kernel_size, strides=strides,
                         dilation_rate=dilation_rate, activation=activation)
 
+    def batchnormalization(self):
+        self._add_layer(keras.layers.BatchNormalization)
+
     def maxpool2D(self, pool_size=(2, 2), strides=None):
         self._add_layer(keras.layers.MaxPooling2D, pool_size, strides)
 
@@ -126,6 +129,12 @@ class DNN(object):
     def train(self, x, y, batch_size=None, epochs=1, validationx=None, validationy=None, verbose=False):
         for epoch in range(epochs):
             hist = self.model.fit(x, y, batch_size, verbose=0)
+            if verbose:
+                print('{}: {}'.format(epoch, hist.history['loss'][-1]))
+
+    def train_generator(self, generator, batches_per_epoch, epochs=1, validation_generator=None, verbose=False):
+        for epoch in range(epochs):
+            hist = self.model.fit_generator(generator, batches_per_epoch, epochs=1, verbose=0)
             if verbose:
                 print('{}: {}'.format(epoch, hist.history['loss'][-1]))
 
