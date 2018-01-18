@@ -1,7 +1,30 @@
 """
 Module for util functions that are compaitible with Tensorflow.
 """
+import os
 import tensorflow as tf
+from tensorflow.python.client import device_lib
+import sys
+from sllutils.utils.contextutils import redirect
+
+
+def get_num_gpus():
+    """
+    Returns the number of available GPUs on this system.
+
+    Note: Due to how tensorflow works, this function will do the following:
+        1. Allocate a small amount of memory on each GPU
+        2. Count number of GPUs
+        3. Release GPU memory
+        4. Return num gpus
+    Running this function if any of these steps are unavailable will cause a crash.
+    """
+    with redirect(sys.stderr, os.devnull):
+        config = tf.ConfigProto()
+        config.gpu_options.per_process_gpu_memory_fraction = 0.000001
+        with tf.Session(config=config):
+            gpu_devices = [device for device in device_lib.list_local_devices() if device.device_type == 'GPU']
+    return len(gpu_devices)
 
 
 def squared_error(prediction, target):

@@ -4,98 +4,158 @@ No warranty!
 """
 import tensorflow as tf
 import sllutils.utils.tfutils as tfutils
-import collections
+import sllutils.utils.contextutils as contextutils
+import sys
+import os
+with contextutils.redirect(sys.stderr, os.devnull):
+    import keras
 
 
 class DNN(object):
+    # Yes, this is basically a wrapper around a wrapper of tensorflow...
     """
-    Implements (Deep) Neural Networks using TensorFlow layers.
+    Implements (Deep) Neural Networks using Keras and Tensorflow.
     """
-    def __init__(self):
-        self._previous_layer = None
-        self._X = None
-        self._counter = collections.Counter()
-        self._dropouts = []
+    def __init__(self, data_format='channels_first', model_on_cpu=True):
+        """
+        Args:
+            data_format: Either 'channels_first' and 'channels_last' depending on what data format convention is to
+                         be used for this model.
+                         Default is channels_first (eg, [3, x, y] for an RGB image of size (x,y)).
+            model_on_cpu: A boolean indicating whether the model should be created on the CPU or if the backend
+                          should decide where to put it.
 
-        self._graph = tf.Graph()
-        config = tf.ConfigProto(allow_soft_placement=True)
-        self._session = tf.Session(config=config, graph=self._graph)
+                          For single-GPU training this must be `False` as the model will not utilize the GPU at all.
 
-    def set_input(self, shape):
+                          For multi-GPU training, `model_on_cpu=True` is recommended as the variable synchronization
+                          might end up on a GPU otherwise.
+
+                          For CPU-training, it should not matter at all as the model should be placed on the CPU
+                          anyways.
+        """
+        keras.backend.set_image_data_format(data_format)
+
+        self.model = keras.models.Sequential()
+        self._input_shape = None
+        self._data_format = data_format
+        self._built = False
+        self._first_layer = True
+        self._model_on_cpu = model_on_cpu
+
+    def _add_layer(self, layer, *args, **kwargs):
+        if self._built:
+            raise ValueError('Model is already built')
+        if self._first_layer:
+            kwargs['input_shape'] = self._input_shape
+        else:
+            raise ValueError('No input shape is specified')
+
+        if self._model_on_cpu:
+            with tf.device('/cpu:0'):
+                self.model.add(layer(*args, **kwargs))
+        else:
+            self.model.add(layer(*args, **kwargs))
+
+    def set_input_shape(self, shape):
         """
         Sets the input layer of the network.
 
         Args:
-            shape: a list variable determining the size of the input layer.
+            shape: a tuple determining the size of the input layer.
                    For variable number of inputs, this list should begin with a 'None'.
-                   For example, MNIST would use shape=[None, 784]
+                   For example, MNIST could use the shapes (784) or (28, 28)
         """
-        if self._X is not None:
-            raise ValueError('Setting the input layer more than once is impossible')
+        if self._built:
+            raise ValueError("Model is already built")
+        if self._input_shape:
+            raise ValueError("Input shape already set")
+        self._input_shape = shape
 
-        with self._graph.as_default():
-            with tf.name_scope('input'):
-                self._X = tf.placeholder(tf.float32, shape=shape)
-                self._previous_layer = self._X
+    def flatten(self):
+        """
+        Flattens the previous layer to a 1-dimensional tensor.
+        """
+        self._add_layer(keras.layers.Flatten)
 
-    def add_reshape(self, new_shape):
-        if self._previous_layer is None:
-            raise ValueError('An input layer must be set first')
+    def reshape(self, shape):
+        """
+        Reshapes the previous layer to the desired shape.
+        Args:
+            shape: The desired new shape for the tensor.
+        """
+        self._add_layer(keras.layers.Reshape, shape)
 
-        with self._graph.as_default():
-            with tf.name_scope('reshape' + str(self._counter['reshape'])):
-                self._previous_layer = tf.reshape(self._previous_layer, new_shape)
+    def conv2D(self, filters, kernel_size, strides=(1, 1), dilation_rate=(1, 1), activation=None):
+        """
+        Adds a convolutional2D layer to the neural network.
+        Args:
+            filters: The convolutional filters to be used.
+                     If this is a single number, use the same filter in all dimensions.
+                     Otherwise this should be a tuple of two integers, one for each dimension.
 
-    def add_conv2d(self, kernel_size, filters, padding='same', activation=tf.nn.relu):
-        with self._graph.as_default():
-            self._previous_layer = tf.layers.conv2d(inputs=self._previous_layer,
-                                                    filters=filters,
-                                                    kernel_size=kernel_size,
-                                                    padding=padding,
-                                                    activation=activation)
+            kernel_size: The kernel size to be used.
+                         If this is a single number, use the same kernel size in all dimensions.
+                         Otherwise this should be a tuple of two integers, one for each dimension.
+        """
+        self._add_layer(keras.layers.Conv2D, filters, kernel_size, strides=strides,
+                        dilation_rate=dilation_rate, activation=activation)
 
-    def add_max_pool2d(self, pool_size, strides):
-        with self._graph.as_default():
-            self._previous_layer = tf.layers.max_pooling2d(inputs=self._previous_layer,
-                                                        pool_size=pool_size,
-                                                        strides=strides)
+    def maxpool2D(self, pool_size=(2, 2), strides=None):
+        self._add_layer(keras.layers.MaxPooling2D, pool_size, strides)
 
-    def add_dense(self, units, activation=tf.nn.relu):
-        with self._graph.as_default():
-            self._previous_layer = tf.layers.dense(inputs=self._previous_layer,
-                                                units=units,
-                                                activation=activation)
+    def dropout(self, drop_rate):
+        self._add_layer(keras.layers.Dropout, drop_rate)
 
-    def add_dropout(self, drop_probability):
-        with self._graph.as_default():
-            prob = tf.placeholder(tf.float32)
-            self._previous_layer = tf.layers.dropout(self._previous_layer, rate=prob, training=True)
-            self._dropouts.append((prob, drop_probability))
+    def dense(self, neurons, activation=None):
+        self._add_layer(keras.layers.Dense, neurons, activation=activation)
 
-    def build(self, cost_function=tfutils.binary_cross_entropy, optimizer=tf.train.AdamOptimizer()):
-        with self._graph.as_default():
-            self._Y = tf.placeholder(tf.float32, [None, *self._previous_layer.get_shape().as_list()[1:]])
-            self._predict_op = self._previous_layer
-            self._cost_op = tf.reduce_mean(cost_function(self._predict_op, self._Y))
-            self._train_op = optimizer.minimize(self._cost_op)
-            self._session.run(tf.global_variables_initializer())
+    def build(self, loss, optimizer, num_gpus=None):
+        """
+        Args:
+            num_gpus: The number of gpus to use for this model.
+                      If None, use the maximum number of available GPUs.
+        """
+        self._base_model = self.model
+        if num_gpus is None:
+            num_gpus = tfutils.get_num_gpus()
+        if num_gpus >= 2:
+            self.model = keras.utils.multi_gpu_model(self.model, num_gpus)
+        self.model.compile(optimizer=optimizer, loss=loss)
+        self._built = True
 
-    def train(self, train_x, train_y):
-        feed_dict = {self._X: train_x,
-                     self._Y: train_y}
-        for prob, prob_val in self._dropouts:
-            feed_dict[prob] = prob_val
-        self._session.run(self._train_op, feed_dict=feed_dict)
+    def train(self, x, y, batch_size=None, epochs=1, validationx=None, validationy=None, verbose=False):
+        for epoch in range(epochs):
+            hist = self.model.fit(x, y, batch_size, verbose=0)
+            if verbose:
+                print('{}: {}'.format(epoch, hist.history['loss'][-1]))
 
-    def cost(self, x, y):
-        feed_dict = {self._X: x,
-                     self._Y: y}
-        for prob, prob_val in self._dropouts:
-            feed_dict[prob] = 0
-        return(self._session.run(self._cost_op, feed_dict=feed_dict))
+    def predict(self, x, batch_size=None):
+        return self.model.predict(x, batch_size)
 
-    def predict(self, x):
-        feed_dict = {self._X: x}
-        for prob, prob_val in self._dropouts:
-            feed_dict[prob] = 0
-        return(self._session.run(self._predict_op, feed_dict=feed_dict))
+    def save(self, path):
+        os.makedirs(path)
+
+        modelpath = os.path.join(path, 'model.json')
+        weightpath = os.path.join(path, 'weights.h5')
+
+        model_json = self._base_model.to_json()
+        open(modelpath, 'w').write(model_json)
+        self._base_model.save_weights(weightpath)
+
+    def load_model(self, path):
+        modelpath = os.path.join(path, 'model.json')
+        weightpath = os.path.join(path, 'weights.h5')
+
+        model_json = open(modelpath, 'r').read()
+        model = keras.models.model_from_json(model_json)
+
+        model.load_weights(weightpath)
+        self.model = model
+        self._built = True
+
+    @classmethod
+    def load(cls, path):
+        with contextutils.redirect(sys.stderr, os.devnull):
+            instance = cls()
+            instance.load_model(path)
+        return instance

@@ -24,3 +24,19 @@ def grouper(iterable, n):
         if not chunk:
             return
         yield chunk
+
+
+def flatten(iterable, n=1):
+    """
+    Flattens an iterable n times.
+
+    Args:
+        iterable: The list to flatten.
+        n: The number of times the list should be flattened.
+
+    Returns:
+        A generator yielding the flattened list.
+    """
+    for _ in range(n):
+        iterable = itertools.chain.from_iterable(iterable)
+    return iterable
