@@ -72,3 +72,43 @@ def filter(csvfile, include={}, exclude={}, fieldnames=None, delimiter=',', quot
                 linestring += line[fn] + delimiter
         filtered_csv.append(linestring[:-len(delimiter)])  # Remove the last delimiter from the line
     return filtered_csv
+
+
+def csvtodict(csv, key, fieldnames=None, delimiter=',', quotechar='"'):
+    """
+    Translates a CSV into a dictionary using the values in one of the columns as the keys for  they dictionary.
+
+    Args:
+        csv: The csv file to be filtered.
+             Must be a list, file, or file-like object that supports the iterator protocol that returns strings as
+             values.
+             A column from the csv that contains strings will be considered a list delimited by the same delimiter
+             as the columns themselves.
+        key: The column from which the dict keys are to be collected from.
+             `key` has to be present in the dictionary headers as defined either by `fieldnames` or the first line
+             of the csv.
+        fieldnames: A list of headers, to be used if the csv does not have headers of their own.
+                    If None, the first row of the csv is presumed to be the header columns.
+        delimiter: The delimiter to be used to separate values in the csv.
+        quotechar: The character which indicates the start and end of strings (lists).
+
+    Returns:
+        A dict of dicts representing the csv.
+
+    Note:
+        The returned dictionary is unordered.
+        Each "row" will include its own key in addition to all other items.
+
+    Example usage:
+        a_csv = ['a,b', '1,0', '"2,0",0']
+        ret = csvtodict(a_csv, 'a')
+        # ret is equal to {'1': {'a': '1', b: '0'}, '"2,0"': {'a': '"2,0"', 'b': '0'}}
+    """
+    csvreader = csv.DictReader(csv, fieldnames=fieldnames, delimiter=delimiter, quotechar=quotechar)
+    translated = {}
+
+    for line in csvreader:
+        translated[line[key]] = {}
+        for header in line:
+            translated[line[key]][header] = line[header]
+    return translated
