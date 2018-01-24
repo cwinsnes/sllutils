@@ -77,16 +77,46 @@ def filter(csvfile, include={}, exclude={}, fieldnames=None, delimiter=',', quot
     return filtered_csv
 
 
+def csvtolist(csvfile, delimiter=',', quotechar='"'):
+    """
+    Translates a CSV iterator into a list of strings.
+    The list of strings can be used in any of the other CSV util functions as well as the csv lib.
+
+    Args:
+        csvfile: The csv file to be converted.
+                 Must be a list, file, or file-like object that supports the iterator protocol that
+                 returns strings as values.
+                 A column from the csv that contains strings will be considered a list delimited by
+                 the same delimiter as the columns themselves.
+        delimiter: The delimiter to be used to separate values in the csv.
+        quotechar: The character which indicates the start and end of strings (lists).
+
+    Returns:
+        A list of strings representing the csv.
+    """
+    csvreader = csv.reader(csvfile, delimiter=delimiter, quotechar=quotechar)
+    new_list = []
+    for line in csvreader:
+        l = ''
+        for item in line:
+            if delimiter in item:
+                l += '{0}{1}{0}'.format(quotechar, item) + delimiter
+            else:
+                l += item + delimiter
+        new_list.append(l)
+    return new_list
+
+
 def csvtodict(csvfile, key, split_strings=True, fieldnames=None, delimiter=',', quotechar='"'):
     """
     Translates a CSV into a dictionary using the values in one of the columns as the keys for the dictionary.
 
     Args:
-        csv: The csv file to be converted.
-             Must be a list, file, or file-like object that supports the iterator protocol that returns strings as
-             values.
-             A column from the csv that contains strings will be considered a list delimited by the same delimiter
-             as the columns themselves.
+        csvfile: The csv file to be converted.
+                 Must be a list, file, or file-like object that supports the iterator protocol that
+                 returns strings as values.
+                 A column from the csv that contains strings will be considered a list delimited by
+                 the same delimiter as the columns themselves.
         key: The column from which the dict keys are to be collected from.
              `key` has to be present in the dictionary headers as defined either by `fieldnames` or the first line
              of the csv.
