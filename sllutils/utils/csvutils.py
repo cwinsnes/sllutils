@@ -1,4 +1,5 @@
 import csv
+import re
 
 
 def filter(csvfile, include={}, exclude={}, fieldnames=None, delimiter=',', quotechar='"'):
@@ -46,6 +47,8 @@ def filter(csvfile, include={}, exclude={}, fieldnames=None, delimiter=',', quot
     csvreader = csv.DictReader(csvfile, fieldnames=fieldnames, delimiter=delimiter, quotechar=quotechar)
     filtered_csv = []
 
+    # DictReader removes headers from the read file if we did not supply our own
+    # If so, re-add the headers.
     include_headers = not fieldnames
     fieldnames = csvreader.fieldnames
 
@@ -74,12 +77,12 @@ def filter(csvfile, include={}, exclude={}, fieldnames=None, delimiter=',', quot
     return filtered_csv
 
 
-def csvtodict(csv, key, fieldnames=None, delimiter=',', quotechar='"'):
+def csvtodict(csvfile, key, split_strings=True, fieldnames=None, delimiter=',', quotechar='"'):
     """
-    Translates a CSV into a dictionary using the values in one of the columns as the keys for  they dictionary.
+    Translates a CSV into a dictionary using the values in one of the columns as the keys for the dictionary.
 
     Args:
-        csv: The csv file to be filtered.
+        csv: The csv file to be converted.
              Must be a list, file, or file-like object that supports the iterator protocol that returns strings as
              values.
              A column from the csv that contains strings will be considered a list delimited by the same delimiter
@@ -87,6 +90,8 @@ def csvtodict(csv, key, fieldnames=None, delimiter=',', quotechar='"'):
         key: The column from which the dict keys are to be collected from.
              `key` has to be present in the dictionary headers as defined either by `fieldnames` or the first line
              of the csv.
+        split_strings: If True, splits strings on the delimiter for the file into lists.
+                       Does not affect the keys of the returned dictionary, just the values.
         fieldnames: A list of headers, to be used if the csv does not have headers of their own.
                     If None, the first row of the csv is presumed to be the header columns.
         delimiter: The delimiter to be used to separate values in the csv.
@@ -104,11 +109,93 @@ def csvtodict(csv, key, fieldnames=None, delimiter=',', quotechar='"'):
         ret = csvtodict(a_csv, 'a')
         # ret is equal to {'1': {'a': '1', b: '0'}, '"2,0"': {'a': '"2,0"', 'b': '0'}}
     """
-    csvreader = csv.DictReader(csv, fieldnames=fieldnames, delimiter=delimiter, quotechar=quotechar)
+    csvreader = csv.DictReader(csvfile, fieldnames=fieldnames, delimiter=delimiter, quotechar=quotechar)
     translated = {}
 
     for line in csvreader:
         translated[line[key]] = {}
         for header in line:
-            translated[line[key]][header] = line[header]
+            s = line[header]
+            if split_strings and delimiter in s:
+                s = s.split(delimiter)
+            translated[line[key]][header] = s
     return translated
+
+
+def grep(csvfile, header, match, match_type='exact', split_strings=True,
+         fieldnames=None, delimiter=',', quotechar='"'):
+    """
+    Args:
+        csv: The csv file to be searched.
+             Must be a list, file, or file-like object that supports the iterator protocol that returns strings as
+             values.
+             A column from the csv that contains strings will be considered a list delimited by the same delimiter
+        header: Which column to search.
+                If `fieldnames` is None, `header` must exist in the first row of the csv.
+                If `fieldnames` is set, `header` must instead exist within that list.
+        match: What to match against.
+        match_type: Can be one of 'exact', 'partial', 'prefix', 'suffix'.
+                    'exact': the lines value must be exactly equal to `match` in the specified column.
+                    'partial': It is enough for `match` to exist within the specified column.
+                    'prefix': The value in the column must start with `match`.
+                    'suffix': The value in the column must end with `match`.
+        split_strings: If True, splits strings on the delimiter for the file into lists.
+                       In this mode, only ONE of the items in the list has to match the search terms.
+        fieldnames: A list of headers, to be used if the csv does not have headers of their own.
+                    If None, the first row of the csv is presumed to be the header columns.
+        delimiter: The delimiter to be used to separate values in the csv.
+        quotechar: The character which indicates the start and end of strings (lists).
+
+    Returns:
+        A list of strings from csvfile that all match the specified search.
+    """
+    match = re.escape(match)
+    if match_type == 'exact':
+        pattern = re.compile('^{}$'.format(match))
+    elif match_type == 'partial':
+        pattern = re.compile('.*?{}.*?'.format(match))
+    elif match_type == 'prefix':
+        pattern = re.compile('^{}'.format(match))
+    elif match_type == 'suffix':
+        pattern = re.compile('.*{}$'.format(match))
+    else:
+        raise ValueError('match_type must be one of exact, partial, prefix, or suffix')
+
+    csvreader = csv.DictReader(csvfile, fieldnames=fieldnames, delimiter=delimiter, quotechar=quotechar)
+
+    filtered_csv = []
+    include_headers = not fieldnames
+    fieldnames = csvreader.fieldnames
+
+    if include_headers:
+        linestring = ''
+        for fn in fieldnames:
+            if delimiter in fn:
+                linestring += '{0}{1}{0}'.format(quotechar, fn) + delimiter
+            else:
+                linestring += fn + delimiter
+        filtered_csv.append(linestring[:-len(delimiter)])
+
+    for line in csvreader:
+        s = line[header]
+        if split_strings:
+            s.split(delimiter)
+        else:
+            s = [s]
+
+        found = False
+        for ss in s:
+            if pattern.match(ss):
+                found = True
+                break
+
+        if found:
+            linestring = ''
+            for fn in fieldnames:
+                if delimiter in line[fn]:
+                    linestring += '{0}{1}{0}'.format(quotechar, line[fn]) + delimiter
+                else:
+                    linestring += line[fn] + delimiter
+            filtered_csv.append(linestring[:-len(delimiter)])  # Remove the last delimiter from the line
+
+    return filtered_csv

@@ -26,7 +26,26 @@ def grouper(iterable, n):
         yield chunk
 
 
-def flatten(iterable, n=1):
+def flatten(iterable):
+    """
+    Flattens all iterables in the iterable until it only yields non iterable items.
+    Will NOT flatten strings. For that, use nflatten instead.
+
+    Args:
+        iterable: The iterable to be flattened.
+
+    Returns:
+        A generator yielding the flattened list.
+    """
+    for x in iterable:
+        if hasattr(x, '__iter__') and not isinstance(x, str):
+            for y in flatten(x):
+                yield y
+        else:
+            yield x
+
+
+def nflatten(iterable, n=1):
     """
     Flattens an iterable n times.
 
@@ -36,6 +55,9 @@ def flatten(iterable, n=1):
 
     Returns:
         A generator yielding the flattened list.
+
+    Note:
+        Will also flatten strings.
     """
     for _ in range(n):
         iterable = itertools.chain.from_iterable(iterable)
