@@ -16,16 +16,14 @@ class DNN(object):
     """
     Implements (Deep) Neural Networks using Keras and Tensorflow.
     """
-    def __init__(self, data_format='channels_first', model_on_cpu=True):
+    def __init__(self, model_on_cpu=True):
         """
         Args:
-            data_format: Either 'channels_first' and 'channels_last' depending on what data format convention is to
-                         be used for this model.
-                         Default is channels_first (eg, [3, x, y] for an RGB image of size (x,y)).
             model_on_cpu: A boolean indicating whether the model should be created on the CPU or if the backend
                           should decide where to put it.
 
-                          For single-GPU training this must be `False` as the model will not utilize the GPU at all.
+                          For single-GPU training this must be `False` as the model will otherwise not utilize the
+                          GPU at all.
 
                           For multi-GPU training, `model_on_cpu=True` is recommended as the variable synchronization
                           might end up on a GPU otherwise.
@@ -33,11 +31,8 @@ class DNN(object):
                           For CPU-training, it should not matter at all as the model should be placed on the CPU
                           anyways.
         """
-        keras.backend.set_image_data_format(data_format)
-
         self.model = keras.models.Sequential()
         self._input_shape = None
-        self._data_format = data_format
         self._built = False
         self._first_layer = True
         self._model_on_cpu = model_on_cpu
@@ -96,9 +91,19 @@ class DNN(object):
             kernel_size: The kernel size to be used.
                          If this is a single number, use the same kernel size in all dimensions.
                          Otherwise this should be a tuple of two integers, one for each dimension.
+            activation: The name of the activation function to use.
+                        If None, linear activation is used (e.g. A(x) = x).
         """
         self._add_layer(keras.layers.Conv2D, filters, kernel_size, strides=strides,
                         dilation_rate=dilation_rate, activation=activation)
+
+    def activation(self, activation):
+        """
+        Adds an activation to the previous layer.
+        Args:
+            activation: The name of the activation function to use.
+        """
+        self._add_layer(keras.layers.Activation, activation)
 
     def batchnormalization(self):
         self._add_layer(keras.layers.BatchNormalization)

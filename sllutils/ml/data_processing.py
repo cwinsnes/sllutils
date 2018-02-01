@@ -38,4 +38,10 @@ class Binarizer(object):
             binarized.append(bin_)
         return binarized
 
+    def __iter__(self):
+        return self.classes
+
+    def __len__(self):
+        return len(self.classes)
+
     __call__ = binarize

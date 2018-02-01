@@ -1,5 +1,16 @@
+import collections
 import csv
 import re
+
+
+def _csvdictline_to_string(dictline, fieldnames, delimiter, quotechar):
+    linestring = ''
+    for fn in fieldnames:
+        if delimiter in dictline[fn]:
+            linestring += '{0}{1}{0}'.format(quotechar, dictline[fn]) + delimiter
+        else:
+            linestring += dictline[fn] + delimiter
+    return linestring[:-len(delimiter)]
 
 
 def filter(csvfile, include={}, exclude={}, fieldnames=None, delimiter=',', quotechar='"'):
@@ -67,13 +78,32 @@ def filter(csvfile, include={}, exclude={}, fieldnames=None, delimiter=',', quot
         if sum(filter_line(line, include)) != len(include):
             continue
 
+        filtered_csv.append(_csvdictline_to_string(line, fieldnames, delimiter, quotechar))
+    return filtered_csv
+
+
+def cut(csvfile, columns, fieldnames=None, delimiter=',', quotechar='"'):
+    """
+    Creates a new csvlist containing only the specified columns.
+    """
+    csvreader = csv.DictReader(csvfile, fieldnames=fieldnames, delimiter=delimiter, quotechar=quotechar)
+
+    include_headers = not fieldnames
+    fieldnames = csvreader.fieldnames
+    fieldnames = [fieldname for fieldname in fieldnames if fieldname in columns]
+
+    filtered_csv = []
+    if include_headers:
         linestring = ''
         for fn in fieldnames:
-            if delimiter in line[fn]:
-                linestring += '{0}{1}{0}'.format(quotechar, line[fn]) + delimiter
+            if delimiter in fn:
+                linestring += '{0}{1}{0}'.format(quotechar, fn) + delimiter
             else:
-                linestring += line[fn] + delimiter
-        filtered_csv.append(linestring[:-len(delimiter)])  # Remove the last delimiter from the line
+                linestring += fn + delimiter
+        filtered_csv.append(linestring[:-len(delimiter)])
+
+    for line in csvreader:
+        filtered_csv.append(_csvdictline_to_string(line, fieldnames, delimiter, quotechar))
     return filtered_csv
 
 
@@ -164,6 +194,8 @@ def grep(csvfile, header, match, match_type='exact', split_strings=True,
                 If `fieldnames` is None, `header` must exist in the first row of the csv.
                 If `fieldnames` is set, `header` must instead exist within that list.
         match: What to match against.
+               If `match` is a list, the item can match either of the items in the list.
+               List matching is very very slow for large lists.
         match_type: Can be one of 'exact', 'partial', 'prefix', 'suffix'.
                     'exact': the lines value must be exactly equal to `match` in the specified column.
                     'partial': It is enough for `match` to exist within the specified column.
@@ -179,17 +211,21 @@ def grep(csvfile, header, match, match_type='exact', split_strings=True,
     Returns:
         A list of strings from csvfile that all match the specified search.
     """
-    match = re.escape(match)
-    if match_type == 'exact':
-        pattern = re.compile('^{}$'.format(match))
-    elif match_type == 'partial':
-        pattern = re.compile('.*?{}.*?'.format(match))
-    elif match_type == 'prefix':
-        pattern = re.compile('^{}'.format(match))
-    elif match_type == 'suffix':
-        pattern = re.compile('.*{}$'.format(match))
-    else:
-        raise ValueError('match_type must be one of exact, partial, prefix, or suffix')
+    patterns = []
+    if not isinstance(match, collections.Iterable) and not isinstance(match, str):
+        match = [match]
+    for m in match:
+        m = re.escape(m)
+        if match_type == 'exact':
+            patterns.append(re.compile('^{}$'.format(m)))
+        elif match_type == 'partial':
+            patterns.append(re.compile('.*?{}.*?'.format(m)))
+        elif match_type == 'prefix':
+            patterns.append(re.compile('^{}'.format(m)))
+        elif match_type == 'suffix':
+            patterns.append(re.compile('.*{}$'.format(m)))
+        else:
+            raise ValueError('match_type must be one of exact, partial, prefix, or suffix')
 
     csvreader = csv.DictReader(csvfile, fieldnames=fieldnames, delimiter=delimiter, quotechar=quotechar)
 
@@ -215,17 +251,11 @@ def grep(csvfile, header, match, match_type='exact', split_strings=True,
 
         found = False
         for ss in s:
-            if pattern.match(ss):
+            if any(map(lambda pattern: pattern.match(ss), patterns)):
                 found = True
                 break
 
         if found:
-            linestring = ''
-            for fn in fieldnames:
-                if delimiter in line[fn]:
-                    linestring += '{0}{1}{0}'.format(quotechar, line[fn]) + delimiter
-                else:
-                    linestring += line[fn] + delimiter
-            filtered_csv.append(linestring[:-len(delimiter)])  # Remove the last delimiter from the line
+            filtered_csv.append(_csvdictline_to_string(line, fieldnames, delimiter, quotechar))
 
     return filtered_csv
