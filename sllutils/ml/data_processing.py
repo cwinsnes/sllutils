@@ -9,6 +9,7 @@ class Binarizer(object):
         """
         self.classes = sorted(classes)
         self._index = dict(zip(self.classes, range(len(self.classes))))
+        self._reverse_index = dict(zip(range(len(self.classes)), self.classes))
 
     def bin_label(self, item):
         """
@@ -37,6 +38,19 @@ class Binarizer(object):
             bin_ = self.bin_label(item)
             binarized.append(bin_)
         return binarized
+
+    def unbin_label(self, item):
+        unbin = []
+        for it in item:
+            if it:
+                unbin.append(self._reverse_index[it])
+        return unbin
+
+    def unbinarize(self, y):
+        unbinarized = []
+        for item in y:
+            unbinarized.append(self.unbin_label(item))
+        return unbinarized
 
     def __iter__(self):
         return self.classes

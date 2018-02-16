@@ -6,9 +6,19 @@ import tensorflow as tf
 import sllutils.utils.tfutils as tfutils
 import sllutils.utils.contextutils as contextutils
 import sys
+import shutil
 import os
 with contextutils.redirect(sys.stderr, os.devnull):
     import keras
+
+
+class MultiGpuCheckpointCallback(keras.callbacks.Callback):
+    def __init__(self, path, model):
+        self.path = path
+        self.model_to_save = model
+
+    def on_epoch_end(self, epoch, logs=None):
+        self.model_to_save.save(self.path + '_at_epoch_%d.h5' % epoch)
 
 
 class DNN(object):
@@ -137,20 +147,48 @@ class DNN(object):
             if verbose:
                 print('{}: {}'.format(epoch, hist.history['loss'][-1]))
 
-    def train_generator(self, generator, batches_per_epoch, epochs=1, validation_generator=None, verbose=False):
-        for epoch in range(epochs):
-            hist = self.model.fit_generator(generator, batches_per_epoch, epochs=1, verbose=0)
-            if verbose:
-                print('{}: {}'.format(epoch, hist.history['loss'][-1]))
+    def train_generator(self, generator, batches_per_epoch, epochs=1, validation_generator=None,
+                        validation_batches_per_epochs=None, verbose=False, early_stopping=None,
+                        checkpointing_folder=None):
+        callbacks = []
+        if early_stopping:
+            early_stop_callback = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0,
+                                                                patience=early_stopping, verbose=1, mode='auto')
+            callbacks.append(early_stop_callback)
+
+        if checkpointing_folder:
+            try:
+                os.makedirs(checkpointing_folder)
+            except OSError:
+                pass
+            checkpointing = os.path.join(checkpointing_folder, 'weights')
+            checkpoint_callback = MultiGpuCheckpointCallback(checkpointing, self._base_model)
+            callbacks.append(checkpoint_callback)
+
+        self.model.fit_generator(generator,
+                                 batches_per_epoch,
+                                 validation_data=validation_generator,
+                                 validation_steps=validation_batches_per_epochs,
+                                 epochs=epochs,
+                                 callbacks=callbacks,
+                                 verbose=1)
 
     def predict(self, x, batch_size=None):
         return self.model.predict(x, batch_size)
 
     def save(self, path):
-        os.makedirs(path)
+        try:
+            os.makedirs(path)
+        except OSError:
+            pass
 
         modelpath = os.path.join(path, 'model.json')
         weightpath = os.path.join(path, 'weights.h5')
+
+        if os.path.exists(modelpath):
+            shutil.move(modelpath, modelpath + '_bak')
+        if os.path.exists(weightpath):
+            shutil.move(weightpath, weightpath + '_bak')
 
         model_json = self._base_model.to_json()
         open(modelpath, 'w').write(model_json)
