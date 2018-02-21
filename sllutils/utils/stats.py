@@ -6,6 +6,53 @@ import collections
 import math
 
 
+def precision_recall(prediction, actual, include_f1=False, mode='total'):
+    """
+    Calculates the precision and recall for a prediction on a dataset.
+    Optionally calculates the f1 score as well.
+
+    Args:
+        prediction: A binary matrix representing the predictions on the dataset.
+        actual: A binary matrix representing the actual true positives of the dataset.
+        include_f1: Whether or not to include f1 in the return values.
+        mode: One of 'total' or 'class'.
+              In 'total' mode, the entire set is considered.
+              In 'class' mode, the precision and recall is calculated for each class individually.
+    Returns:
+        A tuple containing (precision, recall).
+        If include_f1 is True, the tuple contains (precision, recall, f1).
+    """
+    if mode == 'total':
+        axis = None
+    elif mode == 'class':
+        axis = 0
+    else:
+        raise ValueError('The mode has to be either "total" or "class"')
+
+    truepos = np.logical_and(prediction, actual)
+    false = np.subtract(actual, prediction)
+    falsepos = false < 0
+    falseneg = false > 0
+
+    truepos = np.sum(truepos, axis=axis)
+    falsepos = np.sum(falsepos, axis=axis)
+    falseneg = np.sum(falsepos, axis=axis)
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        precision = truepos/(truepos + falsepos)
+        recall = truepos/(truepos + falseneg)
+        if not np.isscalar(precision):
+            precision[~np.isfinite(precision)] = 0
+            recall[~np.isfinite(recall)] = 0
+
+        if include_f1:
+            f1 = 2*(precision*recall)/(precision+recall)
+
+    if include_f1:
+        return precision, recall, f1
+    return precision, recall
+
+
 def jaccard_index(y_true, y_predict):
     """
     Calculates the Jaccard index of the predictions on the true values.
