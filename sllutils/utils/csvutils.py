@@ -211,19 +211,21 @@ def grep(csvfile, header, match, match_type='exact', split_strings=True,
     Returns:
         A list of strings from csvfile that all match the specified search.
     """
-    patterns = []
     if not isinstance(match, collections.Iterable) and not isinstance(match, str):
         match = [match]
     for m in match:
-        m = re.escape(m)
         if match_type == 'exact':
-            patterns.append(re.compile('^{}$'.format(m)))
+            def comparison(x, y):
+                return x == y
         elif match_type == 'partial':
-            patterns.append(re.compile('.*?{}.*?'.format(m)))
+            def comparison(x, y):
+                return y.find(x) != -1
         elif match_type == 'prefix':
-            patterns.append(re.compile('^{}'.format(m)))
+            def comparison(x, y):
+                return y.startswith(x)
         elif match_type == 'suffix':
-            patterns.append(re.compile('.*{}$'.format(m)))
+            def comparison(x, y):
+                return y.endswith(x)
         else:
             raise ValueError('match_type must be one of exact, partial, prefix, or suffix')
 
@@ -251,10 +253,12 @@ def grep(csvfile, header, match, match_type='exact', split_strings=True,
 
         found = False
         for ss in s:
-            if any(map(lambda pattern: pattern.match(ss), patterns)):
-                found = True
+            for m in match:
+                if comparison(m, ss):
+                    found = True
+                    break
+            if found:
                 break
-
         if found:
             filtered_csv.append(_csvdictline_to_string(line, fieldnames, delimiter, quotechar))
 

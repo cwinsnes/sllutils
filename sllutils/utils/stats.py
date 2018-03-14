@@ -36,7 +36,7 @@ def precision_recall(prediction, actual, include_f1=False, mode='total'):
 
     truepos = np.sum(truepos, axis=axis)
     falsepos = np.sum(falsepos, axis=axis)
-    falseneg = np.sum(falsepos, axis=axis)
+    falseneg = np.sum(falseneg, axis=axis)
 
     with np.errstate(divide='ignore', invalid='ignore'):
         precision = truepos/(truepos + falsepos)
@@ -106,6 +106,7 @@ def shannon_entropy(sequence, log_base=2):
     for _, count in counter.items():
         sequence_sum += (count/n) * math.log(count/n, log_base)
     return -sequence_sum
+
 
 # Alternative name to the jaccard index function
 hamming_score = jaccard_index

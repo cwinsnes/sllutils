@@ -13,12 +13,42 @@ with contextutils.redirect(sys.stderr, os.devnull):
 
 
 class MultiGpuCheckpointCallback(keras.callbacks.Callback):
+    """
+    This is an alternative checkpointcallback for Keras where it is easy to specify
+    which model to save.
+    This is mostly useful for multi gpu setups.
+
+    The callback checkpoints the model at every single epoch.
+
+    Note: For a multi gpu setup you should specify the BASE MODEL to save rather than the
+    multi-gpu model.
+    """
     def __init__(self, path, model):
+        """
+        Args:
+            path: The base path to save models at.
+                  The path will have the epoch number, loss value, and validation loss appended each epoch save.
+        """
         self.path = path
         self.model_to_save = model
+        self.saved_json = False
 
-    def on_epoch_end(self, epoch, logs=None):
-        self.model_to_save.save(self.path + '_at_epoch_%d.h5' % epoch)
+    def on_epoch_end(self, epoch, logs):
+        """
+        Overrided method from keras.callbacks.Callback.
+
+        This method should usually not be called manually.
+        It will be called by keras on epoch ends.
+        """
+        if not self.saved_json:
+            json = self.model_to_save.to_json()
+            json_file = open(self.path + 'model.json', 'w')
+            json_file.write(json)
+            json_file.close()
+            self.saved_json = True
+        loss = logs.get('loss', None)
+        val_loss = logs.get('val_loss', None)
+        self.model_to_save.save(self.path + '_at_epoch_{}_{}loss_{}valloss.h5'.format(epoch, loss, val_loss))
 
 
 class DNN(object):
@@ -50,10 +80,12 @@ class DNN(object):
     def _add_layer(self, layer, *args, **kwargs):
         if self._built:
             raise ValueError('Model is already built')
+
         if self._first_layer:
+            if not self._input_shape:
+                raise ValueError('No input shape is specified')
             kwargs['input_shape'] = self._input_shape
-        else:
-            raise ValueError('No input shape is specified')
+            self._first_layer = False
 
         if self._model_on_cpu:
             with tf.device('/cpu:0'):
@@ -67,8 +99,6 @@ class DNN(object):
 
         Args:
             shape: a tuple determining the size of the input layer.
-                   For variable number of inputs, this list should begin with a 'None'.
-                   For example, MNIST could use the shapes (784) or (28, 28)
         """
         if self._built:
             raise ValueError("Model is already built")
@@ -115,8 +145,8 @@ class DNN(object):
         """
         self._add_layer(keras.layers.Activation, activation)
 
-    def batchnormalization(self):
-        self._add_layer(keras.layers.BatchNormalization)
+    def batchnormalization(self, scale=True):
+        self._add_layer(keras.layers.BatchNormalization, scale=scale)
 
     def maxpool2D(self, pool_size=(2, 2), strides=None):
         self._add_layer(keras.layers.MaxPooling2D, pool_size, strides)
@@ -142,14 +172,11 @@ class DNN(object):
         self._built = True
 
     def train(self, x, y, batch_size=None, epochs=1, validationx=None, validationy=None, verbose=False):
-        for epoch in range(epochs):
-            hist = self.model.fit(x, y, batch_size, verbose=0)
-            if verbose:
-                print('{}: {}'.format(epoch, hist.history['loss'][-1]))
+            self.model.fit(x, y, batch_size, epochs=epochs, verbose=1)
 
     def train_generator(self, generator, batches_per_epoch, epochs=1, validation_generator=None,
                         validation_batches_per_epochs=None, verbose=False, early_stopping=None,
-                        checkpointing_folder=None):
+                        checkpointing_folder=None, starting_epoch=1):
         callbacks = []
         if early_stopping:
             early_stop_callback = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0,
@@ -159,7 +186,7 @@ class DNN(object):
         if checkpointing_folder:
             try:
                 os.makedirs(checkpointing_folder)
-            except OSError:
+            except OSError:  # OSError gets returned if the folder already exists
                 pass
             checkpointing = os.path.join(checkpointing_folder, 'weights')
             checkpoint_callback = MultiGpuCheckpointCallback(checkpointing, self._base_model)
@@ -170,6 +197,7 @@ class DNN(object):
                                  validation_data=validation_generator,
                                  validation_steps=validation_batches_per_epochs,
                                  epochs=epochs,
+                                 initial_epoch=starting_epoch,
                                  callbacks=callbacks,
                                  verbose=1)
 
@@ -180,6 +208,7 @@ class DNN(object):
         try:
             os.makedirs(path)
         except OSError:
+            # Assume the OSError is because the folder already existed
             pass
 
         modelpath = os.path.join(path, 'model.json')
@@ -203,11 +232,18 @@ class DNN(object):
 
         model.load_weights(weightpath)
         self.model = model
+        self._base_model = self.model
         self._built = True
 
     @classmethod
     def load(cls, path):
-        with contextutils.redirect(sys.stderr, os.devnull):
-            instance = cls()
-            instance.load_model(path)
+        """
+        Instantiates and loads a DNN from a model file.
+        Args:
+            path: The path to the model that should be loaded.
+        Returns:
+            The instantiated DNN object.
+        """
+        instance = cls()
+        instance.load_model(path)
         return instance

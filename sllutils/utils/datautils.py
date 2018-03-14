@@ -14,6 +14,6 @@ def split(array, n):
     """
     array = list(array)
     if isinstance(n, float):
-        l = len(array)
-        n = int(n * l)
+        length = len(array)
+        n = int(n * length)
     return array[:n], array[n:]

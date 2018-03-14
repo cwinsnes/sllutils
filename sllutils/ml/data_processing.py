@@ -55,7 +55,8 @@ class Binarizer(object):
         return unbinarized
 
     def __iter__(self):
-        return self.classes
+        for class_ in self.classes:
+            yield class_
 
     def __len__(self):
         return len(self.classes)
