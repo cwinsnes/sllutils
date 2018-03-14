@@ -185,6 +185,10 @@ def csvtodict(csvfile, key, split_strings=True, fieldnames=None, delimiter=',', 
 def grep(csvfile, header, match, match_type='exact', split_strings=True,
          fieldnames=None, delimiter=',', quotechar='"'):
     """
+    NOTE:
+    THIS IS SOMEWHAT BROKEN AT THE MOMENT FOR SOME REASON!
+    USE WITH CARE!
+
     Args:
         csv: The csv file to be searched.
              Must be a list, file, or file-like object that supports the iterator protocol that returns strings as
