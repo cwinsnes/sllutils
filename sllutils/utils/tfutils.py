@@ -18,6 +18,7 @@ def get_num_gpus():
         3. Release GPU memory
         4. Return num gpus
     Running this function if any of these steps are unavailable will cause a crash.
+    The method will also redirect stderr to devnull temporarily. 
     """
     with redirect(sys.stderr, os.devnull):
         config = tf.ConfigProto()

@@ -8,8 +8,7 @@ import sllutils.utils.contextutils as contextutils
 import sys
 import shutil
 import os
-with contextutils.redirect(sys.stderr, os.devnull):
-    import keras
+import keras
 
 
 class MultiGpuCheckpointCallback(keras.callbacks.Callback):
